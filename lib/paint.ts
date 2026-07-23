@@ -37,15 +37,7 @@ export function paintRegion(
   c.save();
   c.beginPath();
   tracePoly(c, rg.pts);
-  // subtract front paint regions
-  for (let f = idx + 1; f < regions.length; f++) {
-    if (!regions[f].occ && regions[f].pts.length > 2) tracePoly(c, regions[f].pts);
-  }
-  // subtract all occluders
-  for (const o of regions) {
-    if (o.occ && o.pts.length > 2) tracePoly(c, o.pts);
-  }
-  c.clip("evenodd");
+  c.clip();
 
   c.globalCompositeOperation = "multiply";
   c.globalAlpha = slot.strength;
@@ -56,6 +48,26 @@ export function paintRegion(
   c.globalAlpha = slot.strength * 0.12;
   c.fillStyle = slot.color;
   c.fillRect(0, 0, W, H);
+
+  // Punch out anything covered by regions stacked in front, and all
+  // occluders, so overlapping surfaces (columns, lamps) show what's on top
+  // instead of this region's color bleeding through.
+  c.globalCompositeOperation = "destination-out";
+  c.globalAlpha = 1;
+  for (let f = idx + 1; f < regions.length; f++) {
+    if (!regions[f].occ && regions[f].pts.length > 2) {
+      c.beginPath();
+      tracePoly(c, regions[f].pts);
+      c.fill();
+    }
+  }
+  for (const o of regions) {
+    if (o.occ && o.pts.length > 2) {
+      c.beginPath();
+      tracePoly(c, o.pts);
+      c.fill();
+    }
+  }
   c.restore();
 }
 
