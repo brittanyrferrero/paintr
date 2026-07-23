@@ -73,6 +73,9 @@ button.act:disabled{opacity:.4;cursor:default;}
 .colors{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px;}
 .colors .c{width:32px;height:32px;border:1.5px solid var(--ink);cursor:pointer;position:relative;}
 .colors .c.on::after{content:"";position:absolute;inset:3px;border:2px solid #fff;mix-blend-mode:difference;}
+.colors .c.custom button{position:absolute;top:-6px;right:-6px;width:15px;height:15px;border:1.5px solid var(--ink);
+  background:#fff;color:var(--ink);font-size:9px;line-height:1;cursor:pointer;padding:0;}
+.colors .c.custom button:hover{background:var(--ink);color:#fff;}
 .pickrow{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
 input[type=color]{width:44px;height:32px;border:1.5px solid var(--ink);padding:0;background:#fff;cursor:pointer;}
 .slab{font-size:13px;color:#4a453c;}

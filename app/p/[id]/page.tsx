@@ -7,6 +7,21 @@ import { photoUrl } from "@/lib/supabaseClient";
 import { PALETTE, emptySlots, renderScene } from "@/lib/paint";
 import type { Project, Region, ColorSlot, Scheme, Pt } from "@/lib/types";
 
+const PALETTE_KEY = "roompaint_custom_palette";
+
+function loadCustomColors(): string[] {
+  try {
+    const raw = window.localStorage.getItem(PALETTE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomColors(colors: string[]) {
+  window.localStorage.setItem(PALETTE_KEY, JSON.stringify(colors));
+}
+
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const search = useSearchParams();
@@ -34,6 +49,11 @@ export default function ProjectPage() {
   const [curColor, setCurColor] = useState<string | null>(null);
   const [authorName, setAuthorName] = useState("");
   const [toGallery, setToGallery] = useState(false);
+  const [customColors, setCustomColors] = useState<string[]>([]);
+
+  useEffect(() => {
+    setCustomColors(loadCustomColors());
+  }, []);
 
   // gallery
   const [gallery, setGallery] = useState<Scheme[]>([]);
@@ -154,6 +174,22 @@ export default function ProjectPage() {
   // but every slot is always kept in sync with the same value.
   function setIntensity(v: number) {
     setSlots((s) => s.map((sl) => ({ ...sl, strength: v })));
+  }
+  function saveColorToPalette() {
+    if (!curColor) return;
+    setCustomColors((c) => {
+      if (c.includes(curColor)) return c;
+      const next = [...c, curColor];
+      saveCustomColors(next);
+      return next;
+    });
+  }
+  function removeColorFromPalette(hex: string) {
+    setCustomColors((c) => {
+      const next = c.filter((x) => x !== hex);
+      saveCustomColors(next);
+      return next;
+    });
   }
   async function saveScheme() {
     const r = await fetch("/api/schemes", {
@@ -307,9 +343,24 @@ export default function ProjectPage() {
                 <div key={hex} className={"c" + (curColor === hex ? " on" : "")} style={{ background: hex }} onClick={() => applyColor(hex)} />
               ))}
             </div>
+            {customColors.length > 0 && (
+              <>
+                <div className="slab">your palette</div>
+                <div className="colors">
+                  {customColors.map((hex) => (
+                    <div key={hex} className={"c custom" + (curColor === hex ? " on" : "")} style={{ background: hex }} onClick={() => applyColor(hex)}>
+                      <button title="remove from palette" onClick={(e) => { e.stopPropagation(); removeColorFromPalette(hex); }}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
             <div className="pickrow">
               <input type="color" value={curColor || "#c9d4d0"} onChange={(e) => applyColor(e.target.value)} />
               <span className="slab">custom color</span>
+              <button className="act ghost" style={{ width: "auto", padding: "8px 12px" }} disabled={!curColor} onClick={saveColorToPalette}>
+                Save to palette
+              </button>
             </div>
             <button className="act ghost mt" disabled={!curColor} onClick={() => curColor && applyColorToAll(curColor)}>
               Apply to all regions
