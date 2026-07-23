@@ -39,17 +39,30 @@ export function paintRegion(
   tracePoly(c, rg.pts);
   c.clip();
 
+  const t = slot.strength;
+  // Multiply alone maxes out its darkening at alpha 1, reached at t=1 (the
+  // middle of the 0.5-1.5 intensity range) — past that point, ramp a
+  // flat-color overlay and a contrast boost instead, so the top half of the
+  // slider keeps visibly deepening rather than looking identical to its
+  // midpoint.
+  const over = Math.max(0, t - 1) / 0.5;
+
   c.globalCompositeOperation = "multiply";
-  c.globalAlpha = Math.min(1, slot.strength);
+  c.globalAlpha = Math.min(1, t);
   c.fillStyle = slot.color;
   c.fillRect(0, 0, W, H);
 
-  // Multiply alone maxes out its darkening at alpha 1, so intensity above
-  // that keeps growing by layering more flat color on top instead.
   c.globalCompositeOperation = "source-over";
-  c.globalAlpha = Math.min(1, slot.strength * 0.12);
+  c.globalAlpha = t <= 1 ? t * 0.12 : 0.12 + over * 0.28;
   c.fillStyle = slot.color;
   c.fillRect(0, 0, W, H);
+
+  if (over > 0) {
+    c.globalCompositeOperation = "overlay";
+    c.globalAlpha = over * 0.35;
+    c.fillStyle = slot.color;
+    c.fillRect(0, 0, W, H);
+  }
 
   // Punch out anything covered by regions stacked in front, and all
   // occluders, so overlapping surfaces (columns, lamps) show what's on top

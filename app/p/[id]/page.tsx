@@ -67,7 +67,7 @@ export default function ProjectPage() {
     const name = regName.trim() || (occNext ? `Cutout ${regions.length + 1}` : `Region ${regions.length + 1}`);
     const next = [...regions, { name, pts: draft, occ: occNext }];
     setRegions(next);
-    setSlots((s) => [...s, { color: null, strength: 0.8 }]);
+    setSlots((s) => [...s, { color: null, strength: s[0]?.strength ?? 0.8 }]);
     setDraft([]);
     setRegName("");
     setOccNext(false);
@@ -145,9 +145,15 @@ export default function ProjectPage() {
     setSelPaint(target);
     setSlots((s) => s.map((sl, k) => (k === target ? { ...sl, color } : sl)));
   }
-  function setStrength(v: number) {
-    if (selPaint < 0) return;
-    setSlots((s) => s.map((sl, k) => (k === selPaint ? { ...sl, strength: v } : sl)));
+  function applyColorToAll(color: string) {
+    setCurColor(color);
+    setSlots((s) => s.map((sl, k) => (regions[k]?.occ ? sl : { ...sl, color })));
+  }
+  // Intensity is one shared setting across every region, not per-region — it
+  // rides along in each slot's `strength` field so it saves with the scheme,
+  // but every slot is always kept in sync with the same value.
+  function setIntensity(v: number) {
+    setSlots((s) => s.map((sl) => ({ ...sl, strength: v })));
   }
   async function saveScheme() {
     const r = await fetch("/api/schemes", {
@@ -305,11 +311,14 @@ export default function ProjectPage() {
               <input type="color" value={curColor || "#c9d4d0"} onChange={(e) => applyColor(e.target.value)} />
               <span className="slab">custom color</span>
             </div>
-            <div className="slab">Intensity</div>
-            <input type="range" min={50} max={150} value={Math.round((slots[selPaint]?.strength ?? 0.8) * 100)} onChange={(e) => setStrength(Number(e.target.value) / 100)} />
+            <button className="act ghost mt" disabled={!curColor} onClick={() => curColor && applyColorToAll(curColor)}>
+              Apply to all regions
+            </button>
+            <div className="slab mt">Intensity &middot; all regions</div>
+            <input type="range" min={50} max={150} value={Math.round((slots[0]?.strength ?? 0.8) * 100)} onChange={(e) => setIntensity(Number(e.target.value) / 100)} />
             <div className="row mt">
               <button className="act ghost" onClick={() => selPaint >= 0 && setSlots((s) => s.map((sl, k) => (k === selPaint ? { ...sl, color: null } : sl)))}>Reset region</button>
-              <button className="act ghost" onClick={() => setSlots(emptySlots(regions))}>Reset all</button>
+              <button className="act ghost" onClick={() => setSlots((s) => s.map((sl) => ({ ...sl, color: null })))}>Reset all</button>
             </div>
 
             <h2 style={{ marginTop: 18 }}>Save your scheme</h2>
