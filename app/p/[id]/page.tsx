@@ -306,7 +306,7 @@ export default function ProjectPage() {
               <span className="slab">custom color</span>
             </div>
             <div className="slab">Intensity</div>
-            <input type="range" min={0} max={100} value={Math.round((slots[selPaint]?.strength ?? 0.8) * 100)} onChange={(e) => setStrength(Number(e.target.value) / 100)} />
+            <input type="range" min={50} max={150} value={Math.round((slots[selPaint]?.strength ?? 0.8) * 100)} onChange={(e) => setStrength(Number(e.target.value) / 100)} />
             <div className="row mt">
               <button className="act ghost" onClick={() => selPaint >= 0 && setSlots((s) => s.map((sl, k) => (k === selPaint ? { ...sl, color: null } : sl)))}>Reset region</button>
               <button className="act ghost" onClick={() => setSlots(emptySlots(regions))}>Reset all</button>

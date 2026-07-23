@@ -40,12 +40,14 @@ export function paintRegion(
   c.clip();
 
   c.globalCompositeOperation = "multiply";
-  c.globalAlpha = slot.strength;
+  c.globalAlpha = Math.min(1, slot.strength);
   c.fillStyle = slot.color;
   c.fillRect(0, 0, W, H);
 
+  // Multiply alone maxes out its darkening at alpha 1, so intensity above
+  // that keeps growing by layering more flat color on top instead.
   c.globalCompositeOperation = "source-over";
-  c.globalAlpha = slot.strength * 0.12;
+  c.globalAlpha = Math.min(1, slot.strength * 0.12);
   c.fillStyle = slot.color;
   c.fillRect(0, 0, W, H);
 
