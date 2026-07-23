@@ -1,6 +1,28 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+
+interface MyRoom {
+  id: string;
+  edit_key: string;
+  title: string;
+  created_at: string;
+}
+
+const MINE_KEY = "roompaint_my_rooms";
+
+function loadMine(): MyRoom[] {
+  try {
+    const raw = window.localStorage.getItem(MINE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMine(rooms: MyRoom[]) {
+  window.localStorage.setItem(MINE_KEY, JSON.stringify(rooms));
+}
 
 export default function Home() {
   const [title, setTitle] = useState("");
@@ -8,7 +30,20 @@ export default function Home() {
   const [err, setErr] = useState("");
   const [hot, setHot] = useState(false);
   const [result, setResult] = useState<{ id: string; edit_key: string } | null>(null);
+  const [mine, setMine] = useState<MyRoom[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setMine(loadMine());
+  }, []);
+
+  function forgetRoom(id: string) {
+    setMine((m) => {
+      const next = m.filter((r) => r.id !== id);
+      saveMine(next);
+      return next;
+    });
+  }
 
   async function handleFile(file: File) {
     setErr("");
@@ -33,6 +68,14 @@ export default function Home() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Upload failed");
       setResult(data);
+      setMine((m) => {
+        const next = [
+          { id: data.id, edit_key: data.edit_key, title: title.trim() || "Untitled room", created_at: new Date().toISOString() },
+          ...m,
+        ];
+        saveMine(next);
+        return next;
+      });
     } catch (e: any) {
       setErr(e.message || "Something went wrong");
     } finally {
@@ -50,6 +93,27 @@ export default function Home() {
         <h1>Room Painter</h1>
         <span className="eyebrow">upload &middot; mask &middot; recolor together</span>
       </header>
+
+      {mine.length > 0 && (
+        <div className="center" style={{ margin: "0 auto 32px" }}>
+          <h2 className="eyebrow" style={{ borderBottom: "2px solid var(--ink)", paddingBottom: 8, marginBottom: 10 }}>
+            Your rooms &middot; on this browser
+          </h2>
+          <ul className="chips">
+            {mine.map((m) => (
+              <li key={m.id} className="chip" onClick={() => (window.location.href = `/p/${m.id}?key=${m.edit_key}`)}>
+                <div className="meta">
+                  <span className="nm">{m.title}</span>
+                  <span className="sub">{new Date(m.created_at).toLocaleDateString()}</span>
+                </div>
+                <div className="ctrl" onClick={(e) => e.stopPropagation()}>
+                  <button title="remove from this list" onClick={() => forgetRoom(m.id)}>×</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {!result ? (
         <div className="center">
