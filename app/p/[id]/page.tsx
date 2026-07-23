@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import RoomCanvas from "@/components/RoomCanvas";
 import { photoUrl } from "@/lib/supabaseClient";
@@ -23,6 +23,10 @@ export default function ProjectPage() {
   const [regName, setRegName] = useState("");
   const [occNext, setOccNext] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+  const [titleDraft, setTitleDraft] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoErr, setPhotoErr] = useState("");
+  const photoFileRef = useRef<HTMLInputElement>(null);
 
   // painter state
   const [slots, setSlots] = useState<ColorSlot[]>([]);
@@ -42,6 +46,7 @@ export default function ProjectPage() {
         setProject(d);
         setRegions(d.regions || []);
         setSlots(emptySlots(d.regions || []));
+        setTitleDraft(d.title || "");
         if (editKey) setMode("edit");
       })
       .catch((e) => setLoadErr(e.message));
@@ -94,10 +99,41 @@ export default function ProjectPage() {
     const r = await fetch(`/api/projects/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edit_key: editKey, regions }),
+      body: JSON.stringify({ edit_key: editKey, regions, title: titleDraft }),
     });
     setSaveState(r.ok ? "saved" : "idle");
-    if (r.ok) setTimeout(() => setSaveState("idle"), 1600);
+    if (r.ok) {
+      setProject((p) => (p ? { ...p, title: titleDraft } : p));
+      setTimeout(() => setSaveState("idle"), 1600);
+    }
+  }
+  async function replacePhoto(file: File) {
+    if (!editKey) return;
+    setPhotoErr("");
+    setPhotoBusy(true);
+    try {
+      const dims = await new Promise<{ w: number; h: number }>((res, rej) => {
+        const img = new Image();
+        img.onload = () => res({ w: img.naturalWidth, h: img.naturalHeight });
+        img.onerror = () => rej(new Error("Could not read image"));
+        img.src = URL.createObjectURL(file);
+      });
+      const fd = new FormData();
+      fd.append("edit_key", editKey);
+      fd.append("photo", file);
+      fd.append("photo_w", String(dims.w));
+      fd.append("photo_h", String(dims.h));
+      const r = await fetch(`/api/projects/${id}/photo`, { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Upload failed");
+      setProject((p) =>
+        p ? { ...p, photo_path: data.photo_path, photo_w: data.photo_w, photo_h: data.photo_h } : p
+      );
+    } catch (e: any) {
+      setPhotoErr(e.message || "Something went wrong");
+    } finally {
+      setPhotoBusy(false);
+    }
   }
 
   // ---- painter actions ----
@@ -167,7 +203,39 @@ export default function ProjectPage() {
 
         {mode === "edit" ? (
           <div className="panel">
-            <h2>Regions</h2>
+            <h2>Room</h2>
+            <input
+              type="text"
+              placeholder="Room name"
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+            />
+            <div className="row">
+              <button
+                className="act ghost"
+                onClick={() => photoFileRef.current?.click()}
+                disabled={photoBusy}
+              >
+                {photoBusy ? "Uploading…" : "Replace photo"}
+              </button>
+            </div>
+            <input
+              ref={photoFileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) replacePhoto(f);
+                e.target.value = "";
+              }}
+            />
+            {photoErr && <div className="err">{photoErr}</div>}
+            <p className="hint" style={{ marginTop: 10 }}>
+              Replacing the photo keeps your traced regions &mdash; only the picture underneath changes.
+            </p>
+
+            <h2 style={{ marginTop: 18 }}>Regions</h2>
             <p className="hint">
               Click around a surface to drop points; close by clicking the first point (or hit
               Finish). Select a region to drag its points; double-click a point to remove it. Use
@@ -206,10 +274,10 @@ export default function ProjectPage() {
             </ul>
 
             <button className="act" onClick={saveRegions} disabled={saveState === "saving"}>
-              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : "Save regions for everyone"}
+              {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : "Save changes"}
             </button>
             <p className="hint" style={{ marginTop: 10 }}>
-              Regions save to the project, so everyone with the share link paints on the same shapes.
+              Saves the room name and regions, so everyone with the share link sees the same setup.
             </p>
           </div>
         ) : (
