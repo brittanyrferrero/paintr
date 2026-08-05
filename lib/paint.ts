@@ -24,6 +24,7 @@ function tracePoly(c: CanvasRenderingContext2D, pts: Pt[]) {
 // underlying pixels (columns, lamps) show through.
 export function paintRegion(
   c: CanvasRenderingContext2D,
+  img: HTMLImageElement,
   regions: Region[],
   slots: ColorSlot[],
   idx: number,
@@ -41,11 +42,17 @@ export function paintRegion(
 
   const t = slot.strength;
   // Multiply alone maxes out its darkening at alpha 1, reached at t=1 (the
-  // middle of the 0.5-1.5 intensity range) — past that point, ramp a
-  // flat-color overlay and a contrast boost instead, so the top half of the
-  // slider keeps visibly deepening rather than looking identical to its
-  // midpoint.
+  // middle of the 0.5-1.5 intensity range). Past that point, redraw the
+  // photo itself with boosted contrast/saturation before tinting it, so
+  // higher intensity reads as deeper shadows and richer color rather than
+  // a flatter, more washed-out coat — a real contrast increase instead of
+  // just piling on more flat color.
   const over = Math.max(0, t - 1) / 0.5;
+  if (over > 0) {
+    c.filter = `contrast(${100 + over * 70}%) saturate(${100 + over * 25}%)`;
+    c.drawImage(img, 0, 0, W, H);
+    c.filter = "none";
+  }
 
   c.globalCompositeOperation = "multiply";
   c.globalAlpha = Math.min(1, t);
@@ -53,16 +60,9 @@ export function paintRegion(
   c.fillRect(0, 0, W, H);
 
   c.globalCompositeOperation = "source-over";
-  c.globalAlpha = t <= 1 ? t * 0.12 : 0.12 + over * 0.28;
+  c.globalAlpha = t <= 1 ? t * 0.12 : 0.12 + over * 0.12;
   c.fillStyle = slot.color;
   c.fillRect(0, 0, W, H);
-
-  if (over > 0) {
-    c.globalCompositeOperation = "overlay";
-    c.globalAlpha = over * 0.35;
-    c.fillStyle = slot.color;
-    c.fillRect(0, 0, W, H);
-  }
 
   // Punch out anything covered by regions stacked in front, and all
   // occluders, so overlapping surfaces (columns, lamps) show what's on top
@@ -96,7 +96,7 @@ export function renderScene(
 ) {
   c.clearRect(0, 0, W, H);
   c.drawImage(img, 0, 0, W, H);
-  regions.forEach((_, i) => paintRegion(c, regions, slots, i, W, H));
+  regions.forEach((_, i) => paintRegion(c, img, regions, slots, i, W, H));
 }
 
 export function emptySlots(regions: Region[]): ColorSlot[] {

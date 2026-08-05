@@ -26,6 +26,7 @@ export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const search = useSearchParams();
   const editKey = search.get("key");
+  const schemeParam = search.get("scheme");
 
   const [project, setProject] = useState<Project | null>(null);
   const [loadErr, setLoadErr] = useState("");
@@ -42,6 +43,8 @@ export default function ProjectPage() {
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoErr, setPhotoErr] = useState("");
   const photoFileRef = useRef<HTMLInputElement>(null);
+  const [dirty, setDirty] = useState(false);
+  const savedSnapshotRef = useRef<{ regions: Region[]; title: string } | null>(null);
 
   // painter state
   const [slots, setSlots] = useState<ColorSlot[]>([]);
@@ -49,6 +52,7 @@ export default function ProjectPage() {
   const [curColor, setCurColor] = useState<string | null>(null);
   const [authorName, setAuthorName] = useState("");
   const [toGallery, setToGallery] = useState(false);
+  const [schemeLink, setSchemeLink] = useState("");
   const [customColors, setCustomColors] = useState<string[]>([]);
 
   useEffect(() => {
@@ -67,10 +71,31 @@ export default function ProjectPage() {
         setRegions(d.regions || []);
         setSlots(emptySlots(d.regions || []));
         setTitleDraft(d.title || "");
+        savedSnapshotRef.current = { regions: d.regions || [], title: d.title || "" };
         if (editKey) setMode("edit");
       })
       .catch((e) => setLoadErr(e.message));
   }, [id, editKey]);
+
+  // Warn before leaving the edit view with unsaved region/name changes.
+  // Compares against the last-saved snapshot rather than a load-order flag,
+  // since flagging "has loaded" via a timer races against the very state
+  // update it's meant to ignore.
+  useEffect(() => {
+    const snap = savedSnapshotRef.current;
+    if (!snap) return;
+    setDirty(JSON.stringify(regions) !== JSON.stringify(snap.regions) || titleDraft !== snap.title);
+  }, [regions, titleDraft]);
+
+  useEffect(() => {
+    if (!dirty || !editKey) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty, editKey]);
 
   useEffect(() => {
     fetch(`/api/schemes?project_id=${id}`)
@@ -78,6 +103,21 @@ export default function ProjectPage() {
       .then((d) => Array.isArray(d) && setGallery(d))
       .catch(() => {});
   }, [id]);
+
+  // Opening a scheme's share link loads its colors, once the project (and
+  // its regions) have already loaded.
+  useEffect(() => {
+    if (!project?.id || !schemeParam) return;
+    fetch(`/api/schemes/${schemeParam}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d.colors)) {
+          setSlots(d.colors);
+          setMode("paint");
+        }
+      })
+      .catch(() => {});
+  }, [project?.id, schemeParam]);
 
   const src = project ? photoUrl(project.photo_path) : "";
 
@@ -124,6 +164,8 @@ export default function ProjectPage() {
     setSaveState(r.ok ? "saved" : "idle");
     if (r.ok) {
       setProject((p) => (p ? { ...p, title: titleDraft } : p));
+      savedSnapshotRef.current = { regions, title: titleDraft };
+      setDirty(false);
       setTimeout(() => setSaveState("idle"), 1600);
     }
   }
@@ -202,11 +244,17 @@ export default function ProjectPage() {
         in_gallery: toGallery,
       }),
     });
-    if (r.ok && toGallery) {
+    const data = await r.json();
+    if (!r.ok) {
+      alert(data.error || "Could not save scheme");
+      return;
+    }
+    if (toGallery) {
       const d = await fetch(`/api/schemes?project_id=${id}`).then((x) => x.json());
       if (Array.isArray(d)) setGallery(d);
     }
-    if (r.ok) alert(toGallery ? "Saved to the shared gallery." : "Scheme saved.");
+    const origin = window.location.origin;
+    setSchemeLink(`${origin}/p/${id}?scheme=${data.id}`);
   }
 
   if (loadErr) return <div className="wrap"><p className="err">Couldn&rsquo;t load this project: {loadErr}</p></div>;
@@ -315,6 +363,11 @@ export default function ProjectPage() {
               })}
             </ul>
 
+            {dirty && saveState === "idle" && (
+              <p className="err" style={{ marginTop: 0 }}>
+                You have unsaved changes &mdash; they&rsquo;ll be lost if you leave this page.
+              </p>
+            )}
             <button className="act" onClick={saveRegions} disabled={saveState === "saving"}>
               {saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved ✓" : "Save changes"}
             </button>
@@ -379,6 +432,17 @@ export default function ProjectPage() {
               Add to the shared gallery so others can see it
             </label>
             <button className="act" onClick={saveScheme}>Save scheme</button>
+            {schemeLink && (
+              <div className="banner" style={{ flexDirection: "column", alignItems: "stretch", marginTop: 12, marginBottom: 0 }}>
+                <div>
+                  <div className="eyebrow">Share this scheme</div>
+                  <div className="mono">{schemeLink}</div>
+                </div>
+                <button className="act ghost mt" onClick={() => navigator.clipboard?.writeText(schemeLink)}>
+                  Copy link
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

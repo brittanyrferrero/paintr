@@ -145,6 +145,7 @@ export default function RoomCanvas(props: Props) {
     const p = propsRef.current;
     const draft = p.draft || [];
     for (let i = 0; i < draft.length; i++) if (dist(pt, draft[i]) < grab()) return { kind: "draft" as const, pi: i };
+    if (draft.length > 0) return null; // mid-trace: don't let another region's corner steal the click
     const se = p.selEdit ?? -1;
     if (se >= 0 && p.regions[se]) {
       const pts = p.regions[se].pts;
@@ -155,6 +156,32 @@ export default function RoomCanvas(props: Props) {
       for (let i = 0; i < pts.length; i++) if (dist(pt, pts[i]) < grab()) return { kind: "region" as const, ri, pi: i };
     }
     return null;
+  };
+
+  // Snaps a point onto the nearest existing vertex (own draft, or any region's,
+  // e.g. an adjoining wall/ceiling corner) so traced edges meet exactly.
+  const snapPt = (pt: Pt, exclude?: { kind: "draft" | "region"; ri?: number; pi: number }): Pt => {
+    const p = propsRef.current;
+    let best: Pt = pt;
+    let bestD = grab();
+    const consider = (candidate: Pt) => {
+      const d = dist(pt, candidate);
+      if (d < bestD) {
+        bestD = d;
+        best = candidate;
+      }
+    };
+    (p.draft || []).forEach((q, pi) => {
+      if (exclude?.kind === "draft" && exclude.pi === pi) return;
+      consider(q);
+    });
+    p.regions.forEach((rg, ri) => {
+      rg.pts.forEach((q, pi) => {
+        if (exclude?.kind === "region" && exclude.ri === ri && exclude.pi === pi) return;
+        consider(q);
+      });
+    });
+    return best;
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
@@ -172,7 +199,7 @@ export default function RoomCanvas(props: Props) {
       }
       const draft = p.draft || [];
       if (draft.length > 2 && dist(pt, draft[0]) < grab()) return; // finish handled by parent button
-      p.onDraftChange?.([...draft, pt]);
+      p.onDraftChange?.([...draft, snapPt(pt)]);
     } else {
       for (let i = p.regions.length - 1; i >= 0; i--) {
         if (!p.regions[i].occ && p.regions[i].pts.length > 2 && pointInPoly(pt, p.regions[i].pts)) {
@@ -192,13 +219,15 @@ export default function RoomCanvas(props: Props) {
     const pt = evtPt(e);
     const x = Math.max(0, Math.min(W, pt[0]));
     const y = Math.max(0, Math.min(H, pt[1]));
+    const exclude = d.kind === "draft" ? { kind: "draft" as const, pi: d.pi } : { kind: "region" as const, ri: d.ri, pi: d.pi };
+    const snapped = snapPt([x, y], exclude);
     if (d.kind === "draft") {
       const draft = [...(p.draft || [])];
-      draft[d.pi] = [x, y];
+      draft[d.pi] = snapped;
       p.onDraftChange?.(draft);
     } else if (d.ri !== undefined) {
       const next = p.regions.map((r) => ({ ...r, pts: r.pts.map((q) => [...q] as Pt) }));
-      next[d.ri].pts[d.pi] = [x, y];
+      next[d.ri].pts[d.pi] = snapped;
       p.onRegionsChange?.(next);
     }
   };
